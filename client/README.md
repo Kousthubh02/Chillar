@@ -21,5 +21,6 @@ npx expo start
 This will launch the Metro bundler and provide you with a QR code to open the app on your device or emulator.
 
 ### 3. Configure the Backend Link
-
+Create a config.tsx file
 Make sure to add your backend API link in the `config.tsx` file. Update relevant variable BACKEND_URL with your backend endpoint to enable communication between the client and server.
+

@@ -13,6 +13,7 @@ import {
   TouchableWithoutFeedback,
   BackHandler,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 // Enhanced TypeScript interfaces for better type safety
 interface Transaction {
@@ -108,6 +109,7 @@ const Dashboard = () => {
     useState<boolean>(false);
   const [eventDropdownVisible, setEventDropdownVisible] =
     useState<boolean>(false);
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
 
   // Memoized resetForm to prevent unnecessary re-renders
   const resetForm = useCallback(() => {
@@ -121,6 +123,7 @@ const Dashboard = () => {
     setError("");
     setPersonDropdownVisible(false);
     setEventDropdownVisible(false);
+    setShowDatePicker(false);
   }, []);
 
   // Reset partial payment form
@@ -187,6 +190,12 @@ const Dashboard = () => {
       y < 1900
     ) {
       return "Invalid date";
+    }
+    // Prevent past dates
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (dateObj < today) {
+      return "Due date cannot be in the past";
     }
     return "";
   };
@@ -414,6 +423,7 @@ const Dashboard = () => {
           onPress={() => {
             setPersonDropdownVisible(false);
             setEventDropdownVisible(false);
+            setShowDatePicker(false);
           }}
         >
           <KeyboardAvoidingView
@@ -550,14 +560,31 @@ const Dashboard = () => {
               />
 
               {/* Due Date Input */}
-              <TextInput
+              <TouchableOpacity
                 style={styles.input}
-                placeholder="Due Date (DD-MM-YYYY)"
-                placeholderTextColor="#999"
-                value={form.due_date}
-                onChangeText={(text) => setForm({ ...form, due_date: text })}
-                accessibilityLabel="Enter transaction due date"
-              />
+                onPress={() => setShowDatePicker(true)}
+                accessibilityLabel="Select transaction due date"
+              >
+                <Text style={[styles.inputText, !form.due_date && styles.placeholderText]}>
+                  {form.due_date || "Due Date (DD-MM-YYYY)"}
+                </Text>
+              </TouchableOpacity>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={form.due_date ? new Date(form.due_date.split("-").reverse().join("-")) : new Date()}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "inline" : "default"}
+                  minimumDate={new Date()}
+                  onChange={(event, selectedDate) => {
+                    setShowDatePicker(Platform.OS === "ios");
+                    if (selectedDate) {
+                      const formattedDate = `${String(selectedDate.getDate()).padStart(2, "0")}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}-${selectedDate.getFullYear()}`;
+                      setForm({ ...form, due_date: formattedDate });
+                      setError("");
+                    }
+                  }}
+                />
+              )}
 
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -759,6 +786,14 @@ const styles = StyleSheet.create({
     width: "100%",
     backgroundColor: "#F8F9FA",
     height: 40,
+    justifyContent: "center",
+  },
+  inputText: {
+    color: "#333",
+    fontSize: 15,
+  },
+  placeholderText: {
+    color: "#999",
   },
   dropdownContainer: {
     width: "100%",
