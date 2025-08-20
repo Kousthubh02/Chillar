@@ -13,7 +13,8 @@ import {
   TouchableWithoutFeedback,
   BackHandler,
 } from "react-native";
-import DateTimePicker from "@react-native-community/datetimepicker";
+import { router } from "expo-router";
+// import DateTimePicker from "@react-native-community/datetimepicker";
 
 // Enhanced TypeScript interfaces for better type safety
 interface Transaction {
@@ -109,7 +110,10 @@ const Dashboard = () => {
     useState<boolean>(false);
   const [eventDropdownVisible, setEventDropdownVisible] =
     useState<boolean>(false);
-  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [filterBy, setFilterBy] = useState<'all' | 'person' | 'event'>('all');
+  const [selectedPersonFilter, setSelectedPersonFilter] = useState<string>('');
+  const [selectedEventFilter, setSelectedEventFilter] = useState<string>('');
+  const [filterDropdownVisible, setFilterDropdownVisible] = useState<boolean>(false);
 
   // Memoized resetForm to prevent unnecessary re-renders
   const resetForm = useCallback(() => {
@@ -123,7 +127,6 @@ const Dashboard = () => {
     setError("");
     setPersonDropdownVisible(false);
     setEventDropdownVisible(false);
-    setShowDatePicker(false);
   }, []);
 
   // Reset partial payment form
@@ -266,7 +269,7 @@ const Dashboard = () => {
     );
     if (!person) {
       person = { person_id: Date.now(), name: trimmedPersonName };
-      setPeople((prev) => [...prev, person]);
+      setPeople((prev) => [...prev, person!]);
     }
 
     let event_id: number | null = null;
@@ -278,7 +281,7 @@ const Dashboard = () => {
       );
       if (!event) {
         event = { event_id: Date.now(), name: trimmedEventName };
-        setEvents((prev) => [...prev, event]);
+        setEvents((prev) => [...prev, event!]);
       }
       event_id = event.event_id;
     }
@@ -347,37 +350,41 @@ const Dashboard = () => {
     setPartialPaymentModalVisible(true);
   };
 
-  const renderTransaction = ({ item }: { item: Transaction }) => (
-    <View style={styles.transactionCard}>
-      <Text style={styles.transactionText}>Person: {item.person_name}</Text>
-      <Text style={styles.transactionText}>Event: {item.event_name}</Text>
-      <Text style={styles.transactionText}>
-        Amount: ${item.amount.toFixed(2)}
-      </Text>
-      <Text style={styles.transactionText}>
-        Pending: ${(item.amount - item.paid_amount).toFixed(2)}
-      </Text>
-      <Text style={styles.transactionText}>Reason: {item.reason}</Text>
-      <Text style={styles.transactionText}>Due: {item.due_date}</Text>
-      <Text style={styles.transactionText}>Status: Pending</Text>
-      <View style={styles.transactionButtons}>
-        <TouchableOpacity
-          style={styles.markPaidButton}
-          onPress={() => handleMarkAsPaid(item.transaction_id)}
-          accessibilityLabel={`Mark transaction for ${item.person_name} as paid`}
-        >
-          <Text style={styles.buttonText}>Mark as Paid</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.partialPaymentButton}
-          onPress={() => openPartialPaymentModal(item.transaction_id)}
-          accessibilityLabel={`Mark partial payment for ${item.person_name}`}
-        >
-          <Text style={styles.buttonText}>Mark Partial Payment</Text>
-        </TouchableOpacity>
+  const renderTransaction = ({ item }: { item: Transaction }) => {
+    if (item.status) return null; // Don't render paid transactions
+    
+    return (
+      <View style={styles.transactionCard}>
+        <Text style={styles.transactionText}>Person: {item.person_name}</Text>
+        <Text style={styles.transactionText}>Event: {item.event_name}</Text>
+        <Text style={styles.transactionText}>
+          Amount: ${item.amount.toFixed(2)}
+        </Text>
+        <Text style={styles.transactionText}>
+          Pending: ${(item.amount - item.paid_amount).toFixed(2)}
+        </Text>
+        <Text style={styles.transactionText}>Reason: {item.reason}</Text>
+        <Text style={styles.transactionText}>Due: {item.due_date}</Text>
+        <Text style={styles.transactionText}>Status: Pending</Text>
+        <View style={styles.transactionButtons}>
+          <TouchableOpacity
+            style={styles.markPaidButton}
+            onPress={() => handleMarkAsPaid(item.transaction_id)}
+            accessibilityLabel={`Mark transaction for ${item.person_name} as paid`}
+          >
+            <Text style={styles.buttonText}>Mark as Paid</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.partialPaymentButton}
+            onPress={() => openPartialPaymentModal(item.transaction_id)}
+            accessibilityLabel={`Mark partial payment for ${item.person_name}`}
+          >
+            <Text style={styles.buttonText}>Mark Partial Payment</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const isSubmitDisabled =
     !form.person_name.trim() ||
@@ -385,6 +392,7 @@ const Dashboard = () => {
     isNaN(Number(form.amount)) ||
     Number(form.amount) <= 0 ||
     !form.reason.trim() ||
+    !form.due_date ||
     validateDate(form.due_date) !== "";
 
   const isPartialPaymentSubmitDisabled =
@@ -392,14 +400,80 @@ const Dashboard = () => {
     isNaN(Number(partialPaymentAmount)) ||
     Number(partialPaymentAmount) <= 0;
 
+  // Filter transactions based on selected filters
+  const filteredTransactions = transactions.filter(transaction => {
+    if (filterBy === 'person' && selectedPersonFilter) {
+      return transaction.person_name.toLowerCase().includes(selectedPersonFilter.toLowerCase());
+    }
+    if (filterBy === 'event' && selectedEventFilter) {
+      return transaction.event_name.toLowerCase().includes(selectedEventFilter.toLowerCase());
+    }
+    return true; // 'all' or no specific filter
+  });
+
   return (
     <View style={styles.container}>
       <FlatList
-        data={transactions.filter((t) => !t.status)}
+        data={filteredTransactions}
         renderItem={renderTransaction}
         keyExtractor={(item) => item.transaction_id.toString()}
         ListHeaderComponent={
-          <Text style={styles.header}>Pending Transactions</Text>
+          <>
+            <Text style={styles.header}>Pending Transactions</Text>
+            
+            {/* Filter Controls */}
+            <View style={styles.filterContainer}>
+              <Text style={styles.filterLabel}>Filter by:</Text>
+              <View style={styles.filterRow}>
+                <TouchableOpacity
+                  style={[styles.filterButton, filterBy === 'all' && styles.activeFilterButton]}
+                  onPress={() => {
+                    setFilterBy('all');
+                    setSelectedPersonFilter('');
+                    setSelectedEventFilter('');
+                  }}
+                >
+                  <Text style={[styles.filterButtonText, filterBy === 'all' && styles.activeFilterButtonText]}>All</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.filterButton, filterBy === 'person' && styles.activeFilterButton]}
+                  onPress={() => setFilterBy('person')}
+                >
+                  <Text style={[styles.filterButtonText, filterBy === 'person' && styles.activeFilterButtonText]}>Person</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.filterButton, filterBy === 'event' && styles.activeFilterButton]}
+                  onPress={() => setFilterBy('event')}
+                >
+                  <Text style={[styles.filterButtonText, filterBy === 'event' && styles.activeFilterButtonText]}>Event</Text>
+                </TouchableOpacity>
+              </View>
+              
+              {filterBy === 'person' && (
+                <View style={styles.searchContainer}>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search by person name..."
+                    value={selectedPersonFilter}
+                    onChangeText={setSelectedPersonFilter}
+                  />
+                </View>
+              )}
+              
+              {filterBy === 'event' && (
+                <View style={styles.searchContainer}>
+                  <TextInput
+                    style={styles.searchInput}
+                    placeholder="Search by event name..."
+                    value={selectedEventFilter}
+                    onChangeText={setSelectedEventFilter}
+                  />
+                </View>
+              )}
+            </View>
+          </>
         }
         ListEmptyComponent={
           <Text style={styles.emptyText}>No pending transactions</Text>
@@ -409,13 +483,23 @@ const Dashboard = () => {
         removeClippedSubviews={true}
       />
 
-      <TouchableOpacity
-        style={styles.openModalButton}
-        onPress={() => setModalVisible(true)}
-        accessibilityLabel="Open form to add new transaction"
-      >
-        <Text style={styles.buttonText}>Add Transaction</Text>
-      </TouchableOpacity>
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity
+          style={styles.historyButton}
+          onPress={() => router.push("/mockdata")}
+          accessibilityLabel="View transaction history"
+        >
+          <Text style={styles.buttonText}>View History</Text>
+        </TouchableOpacity>
+        
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={() => setModalVisible(true)}
+          accessibilityLabel="Open form to add new transaction"
+        >
+          <Text style={styles.buttonText}>Add Transaction</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* Add Transaction Modal */}
       <Modal visible={modalVisible} animationType="slide" transparent={true}>
@@ -423,7 +507,6 @@ const Dashboard = () => {
           onPress={() => {
             setPersonDropdownVisible(false);
             setEventDropdownVisible(false);
-            setShowDatePicker(false);
           }}
         >
           <KeyboardAvoidingView
@@ -431,8 +514,9 @@ const Dashboard = () => {
             behavior={Platform.OS === "ios" ? "padding" : "height"}
             keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
           >
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Add New Transaction</Text>
+            <TouchableWithoutFeedback onPress={() => {}}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Add New Transaction</Text>
 
               {/* Person Input and Dropdown */}
               <View style={styles.dropdownContainer}>
@@ -544,7 +628,17 @@ const Dashboard = () => {
                 placeholder="Amount"
                 placeholderTextColor="#999"
                 value={form.amount}
-                onChangeText={(text) => setForm({ ...form, amount: text })}
+                onChangeText={(text) => {
+                  // Only allow numbers and one decimal point
+                  const cleanedText = text.replace(/[^0-9.]/g, '');
+                  const parts = cleanedText.split('.');
+                  let formattedText = cleanedText;
+                  if (parts.length > 2) {
+                    formattedText = parts[0] + '.' + parts.slice(1).join('');
+                  }
+                  setForm({ ...form, amount: formattedText });
+                  setError("");
+                }}
                 keyboardType="numeric"
                 accessibilityLabel="Enter transaction amount"
               />
@@ -560,31 +654,20 @@ const Dashboard = () => {
               />
 
               {/* Due Date Input */}
-              <TouchableOpacity
+              <TextInput
                 style={styles.input}
-                onPress={() => setShowDatePicker(true)}
-                accessibilityLabel="Select transaction due date"
-              >
-                <Text style={[styles.inputText, !form.due_date && styles.placeholderText]}>
-                  {form.due_date || "Due Date (DD-MM-YYYY)"}
-                </Text>
-              </TouchableOpacity>
-              {showDatePicker && (
-                <DateTimePicker
-                  value={form.due_date ? new Date(form.due_date.split("-").reverse().join("-")) : new Date()}
-                  mode="date"
-                  display={Platform.OS === "ios" ? "inline" : "default"}
-                  minimumDate={new Date()}
-                  onChange={(event, selectedDate) => {
-                    setShowDatePicker(Platform.OS === "ios");
-                    if (selectedDate) {
-                      const formattedDate = `${String(selectedDate.getDate()).padStart(2, "0")}-${String(selectedDate.getMonth() + 1).padStart(2, "0")}-${selectedDate.getFullYear()}`;
-                      setForm({ ...form, due_date: formattedDate });
-                      setError("");
-                    }
-                  }}
-                />
-              )}
+                placeholder="Due Date (DD-MM-YYYY)"
+                placeholderTextColor="#999"
+                value={form.due_date}
+                onChangeText={(text) => {
+                  setForm({ ...form, due_date: text });
+                  setError("");
+                }}
+                accessibilityLabel="Enter transaction due date"
+              />
+
+
+
 
               {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -608,7 +691,8 @@ const Dashboard = () => {
                   <Text style={styles.buttonText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+              </View>
+            </TouchableWithoutFeedback>
           </KeyboardAvoidingView>
         </TouchableWithoutFeedback>
       </Modal>
@@ -635,7 +719,14 @@ const Dashboard = () => {
                 placeholderTextColor="#999"
                 value={partialPaymentAmount}
                 onChangeText={(text) => {
-                  setPartialPaymentAmount(text);
+                  // Only allow numbers and one decimal point
+                  const cleanedText = text.replace(/[^0-9.]/g, '');
+                  const parts = cleanedText.split('.');
+                  let formattedText = cleanedText;
+                  if (parts.length > 2) {
+                    formattedText = parts[0] + '.' + parts.slice(1).join('');
+                  }
+                  setPartialPaymentAmount(formattedText);
                   setPartialPaymentError("");
                 }}
                 keyboardType="numeric"
@@ -732,20 +823,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
     textAlign: "center",
-  },
-  openModalButton: {
-    backgroundColor: "#007BFF",
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    marginTop: 12,
-    width: "100%",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 2,
   },
   modalContainer: {
     flex: 1,
@@ -858,6 +935,91 @@ const styles = StyleSheet.create({
     color: "#6C757D",
     textAlign: "left",
     marginTop: 20,
+  },
+  buttonContainer: {
+    flexDirection: "row",
+    gap: 12,
+    marginTop: 12,
+    width: "100%",
+  },
+  historyButton: {
+    backgroundColor: "#6C757D",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    flex: 1,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  addButton: {
+    backgroundColor: "#007BFF",
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    flex: 1,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  filterContainer: {
+    backgroundColor: "#F8F9FA",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  filterLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#495057",
+    marginBottom: 8,
+  },
+  filterRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginBottom: 12,
+  },
+  filterButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "#CED4DA",
+    flex: 1,
+    alignItems: "center",
+  },
+  activeFilterButton: {
+    backgroundColor: "#007BFF",
+    borderColor: "#007BFF",
+  },
+  filterButtonText: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: "#495057",
+  },
+  activeFilterButtonText: {
+    color: "#FFFFFF",
+  },
+  searchContainer: {
+    marginTop: 4,
+  },
+  searchInput: {
+    borderWidth: 1,
+    borderColor: "#CED4DA",
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+    color: "#333",
+    backgroundColor: "#FFFFFF",
   },
 });
 
