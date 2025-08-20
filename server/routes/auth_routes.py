@@ -35,6 +35,7 @@ def signup():
 
 # Login Route
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("5 per minute")  # Limit login attempts
 def login():
     data = request.json
     email = data.get('email')
@@ -56,6 +57,7 @@ def login():
 
 # 📩 Request OTP
 @auth_bp.route('/request-otp', methods=['POST'])
+@limiter.limit("3 per hour")  # Limit OTP requests
 def request_otp():
     data = request.json
     email = data.get('email')

@@ -1,6 +1,6 @@
 from flask import Flask, Blueprint
 from config import config
-from extensions import db, bcrypt, jwt, mail
+from extensions import db, bcrypt, jwt, mail, limiter
 from flask_migrate import Migrate
 from flask_cors import CORS
 from routes.auth_routes import auth_bp
@@ -23,23 +23,26 @@ def create_app(config_name='default'):
     })
 
     # Initialize Extensions
-db.init_app(app)
-bcrypt.init_app(app)
-jwt.init_app(app)
-mail.init_app(app)
-migrate = Migrate(app, db)
+    db.init_app(app)
+    bcrypt.init_app(app)
+    jwt.init_app(app)
+    mail.init_app(app)
+    limiter.init_app(app)
+    migrate = Migrate(app, db)
 
-# Register Blueprints
+    # Register Blueprints
+    from routes.api_routes import api_bp
+    app.register_blueprint(auth_bp, url_prefix='/auth')
+    app.register_blueprint(api_bp, url_prefix='/api')
+    admin.init_app(app)
 
-from routes.api_routes import api_bp
-app.register_blueprint(auth_bp, url_prefix='/auth')
-app.register_blueprint(api_bp, url_prefix='/api')
-admin.init_app(app)
+    @app.route('/')
+    def home():
+        return "This is the home page"
 
-@app.route('/')
-def home():
-    return "This is the home page"
+    return app
 
 if __name__ == '__main__':
+    app = create_app()
     port = int(os.environ.get("FLASK_RUN_PORT", 5000))
     app.run(host='0.0.0.0', debug=True, port=port)
