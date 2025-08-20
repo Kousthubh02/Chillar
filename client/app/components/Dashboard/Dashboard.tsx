@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import config from "../../config";
 import {
   View,
   Text,
@@ -32,12 +33,12 @@ interface Transaction {
 
 interface Person {
   person_id: number;
-  name: string;
+  person_name: string;
 }
 
 interface Event {
   event_id: number;
-  name: string;
+  event_name: string;
 }
 
 interface FormState {
@@ -76,28 +77,44 @@ const mockTransactions: Transaction[] = [
 ];
 
 const mockPeople: Person[] = [
-  { person_id: 1, name: "John Doe" },
-  { person_id: 2, name: "Jane Smith" },
+  { person_id: 1, person_name: "John Doe" },
+  { person_id: 2, person_name: "Jane Smith" },
 ];
 
 const mockEvents: Event[] = [
-  { event_id: 1, name: "Birthday Party" },
-  { event_id: 2, name: "Wedding" },
+  { event_id: 1, event_name: "Birthday Party" },
+  { event_id: 2, event_name: "Wedding" },
 ];
 
 const Dashboard = () => {
-  const [transactions, setTransactions] =
-    useState<Transaction[]>(mockTransactions);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [modalVisible, setModalVisible] = useState<boolean>(false);
-  const [partialPaymentModalVisible, setPartialPaymentModalVisible] =
-    useState<boolean>(false);
-  const [selectedTransactionId, setSelectedTransactionId] = useState<
-    number | null
-  >(null);
+  const [partialPaymentModalVisible, setPartialPaymentModalVisible] = useState<boolean>(false);
+  const [selectedTransactionId, setSelectedTransactionId] = useState<number | null>(null);
   const [partialPaymentAmount, setPartialPaymentAmount] = useState<string>("");
   const [partialPaymentError, setPartialPaymentError] = useState<string>("");
-  const [people, setPeople] = useState<Person[]>(mockPeople);
-  const [events, setEvents] = useState<Event[]>(mockEvents);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
+  // Fetch transactions, people, and events from API
+  // Replace with your computer's local IP address
+  const BASE_URL = config.BACKEND_URL;
+  useEffect(() => {
+    fetch(`${BASE_URL}/api/transactions`)
+      .then((res) => res.json())
+      .then((data) => {
+        console.log("Fetched transactions:", data);
+        setTransactions(data);
+      })
+      .catch(() => setTransactions([]));
+    fetch(`${BASE_URL}/api/people`)
+      .then((res) => res.json())
+      .then((data) => setPeople(data))
+      .catch(() => setPeople([]));
+    fetch(`${BASE_URL}/api/events`)
+      .then((res) => res.json())
+      .then((data) => setEvents(data))
+      .catch(() => setEvents([]));
+  }, []);
   const [form, setForm] = useState<FormState>({
     person_name: "",
     event_name: "",
@@ -203,49 +220,89 @@ const Dashboard = () => {
     return "";
   };
 
-  const handleAddPerson = () => {
+  const handleAddPerson = async () => {
     const trimmedName = form.person_name.trim();
     if (!trimmedName) {
       setError("Person name is required");
       return;
     }
     if (
-      people.find((p) => p.name.toLowerCase() === trimmedName.toLowerCase())
+      people.find((p) => p.person_name.toLowerCase() === trimmedName.toLowerCase())
     ) {
       setError("Person already exists");
       return;
     }
-    const newPerson: Person = { person_id: Date.now(), name: trimmedName };
-    setPeople((prev) => [...prev, newPerson]);
-    setPersonDropdownVisible(false);
-    setForm({ ...form, person_name: trimmedName });
-    setError("");
+
+    try {
+      // Create person on the server
+      const response = await fetch(`${BASE_URL}/api/people`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ person_name: trimmedName }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Failed to create person: ${errorData.msg || response.statusText || 'Unknown error'}`);
+      }
+
+      const newPerson = await response.json() as Person;
+      console.log('New person created:', newPerson);
+      setPeople((prev) => [...prev, newPerson]);
+      setPersonDropdownVisible(false);
+      setForm((prev) => ({ ...prev, person_name: trimmedName }));
+      setError("");
+    } catch (err) {
+      console.error('Error creating person:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create person');
+    }
   };
 
-  const handleAddEvent = () => {
+  const handleAddEvent = async () => {
     const trimmedName = form.event_name.trim();
     if (!trimmedName) {
       setError("Event name is required");
       return;
     }
     if (
-      events.find((e) => e.name.toLowerCase() === trimmedName.toLowerCase())
+      events.find((e) => e.event_name.toLowerCase() === trimmedName.toLowerCase())
     ) {
       setError("Event already exists");
       return;
     }
-    const newEvent: Event = { event_id: Date.now(), name: trimmedName };
-    setEvents((prev) => [...prev, newEvent]);
-    setEventDropdownVisible(false);
-    setForm({ ...form, event_name: trimmedName });
-    setError("");
+
+    try {
+      // Create event on the server
+      const response = await fetch(`${BASE_URL}/api/events`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_name: trimmedName }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(`Failed to create event: ${errorData.msg || response.statusText || 'Unknown error'}`);
+      }
+
+      const newEvent = await response.json() as Event;
+      console.log('New event created:', newEvent);
+      setEvents((prev) => [...prev, newEvent]);
+      setEventDropdownVisible(false);
+      setForm((prev) => ({ ...prev, event_name: trimmedName }));
+      setError("");
+    } catch (err) {
+      console.error('Error creating event:', err);
+      setError(err instanceof Error ? err.message : 'Failed to create event');
+    }
   };
 
-  const handleCreateTransaction = () => {
+  const handleCreateTransaction = async () => {
+    setError("");  // Clear any previous errors
     const trimmedPersonName = form.person_name.trim();
     const trimmedEventName = form.event_name.trim();
     const amount = parseFloat(form.amount);
 
+    // Validate inputs
     if (!trimmedPersonName) {
       setError("Person name is required");
       return;
@@ -264,48 +321,150 @@ const Dashboard = () => {
       return;
     }
 
-    let person = people.find(
-      (p) => p.name.toLowerCase() === trimmedPersonName.toLowerCase()
-    );
-    if (!person) {
-      person = { person_id: Date.now(), name: trimmedPersonName };
-      setPeople((prev) => [...prev, person!]);
-    }
+    const createTransaction = async (personId: number, eventId: number | null): Promise<{ transaction_id?: number; msg?: string }> => {
+      try {
+        console.log('Creating transaction with:', { personId, eventId });
+        const transactionData = {
+          person_id: personId,
+          event_id: eventId,
+          amount,
+          paid_amount: 0.0,
+          reason: form.reason.trim(),
+          due_date: form.due_date,
+          status: false,
+        };
+      
+        console.log('Sending transaction:', transactionData);
+        
+        // Make sure the request is going to the correct endpoint
+        const url = `${BASE_URL}/api/transactions`;
+        console.log('Request URL:', url);
 
-    let event_id: number | null = null;
-    let event_name = trimmedEventName || "N/A";
-    let event: Event | undefined;
-    if (trimmedEventName) {
-      event = events.find(
-        (e) => e.name.toLowerCase() === trimmedEventName.toLowerCase()
-      );
-      if (!event) {
-        event = { event_id: Date.now(), name: trimmedEventName };
-        setEvents((prev) => [...prev, event!]);
+        const response = await fetch(url, {
+          method: "POST",
+          headers: { 
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+          },
+          body: JSON.stringify(transactionData),
+        });
+        
+        console.log('Response status:', response.status);
+        console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+
+        if (!response.ok) {
+          throw new Error(`Failed to create transaction: ${response.statusText}`);
+        }
+
+        return response.json();
+      } catch (error) {
+        console.error('Error in createTransaction:', error);
+        throw error;
       }
-      event_id = event.event_id;
-    }
-
-    const newTx: Transaction = {
-      transaction_id: Date.now(),
-      person_id: person.person_id,
-      person_name: person.name,
-      event_id,
-      event_name,
-      amount,
-      paid_amount: 0.0,
-      reason: form.reason.trim(),
-      due_date: form.due_date,
-      status: false,
     };
-    setTransactions((prev) => [...prev, newTx]);
-    setModalVisible(false);
+
+    try {
+      // Find person (should already exist from handleAddPerson)
+      const currentPerson = people.find(
+        (p) => p.person_name.toLowerCase() === trimmedPersonName.toLowerCase()
+      );
+
+      if (!currentPerson) {
+        throw new Error('Person not found. Please use the "+" button to create a new person first.');
+      }
+
+      // Find event (should already exist from handleAddEvent if one was specified)
+      let currentEvent: Event | null = null;
+      if (trimmedEventName) {
+        currentEvent = events.find(
+          (e) => e.event_name.toLowerCase() === trimmedEventName.toLowerCase()
+        ) || null;
+
+        if (!currentEvent) {
+          throw new Error('Event not found. Please use the "+" button to create a new event first.');
+        }
+      }
+
+      // Create the transaction
+      const transactionData = {
+        person_id: currentPerson.person_id,
+        event_id: currentEvent?.event_id ?? null,
+        amount: parseFloat(form.amount),
+        reason: form.reason.trim(),
+        due_date: form.due_date,
+        status: false,
+        paid_amount: 0.0
+      };
+
+    // Removed duplicate transaction creation code
+    // Now calling handleCreateTransaction directly from the submit handler      // Create the transaction
+      console.log('Creating transaction with:', {
+        person_id: currentPerson.person_id,
+        event_id: currentEvent?.event_id ?? null,
+        amount,
+        reason: form.reason.trim(),
+        due_date: form.due_date
+      });
+      
+      const transactionResponse = await createTransaction(
+        currentPerson.person_id,
+        currentEvent?.event_id ?? null
+      );
+
+      if (!transactionResponse.transaction_id) {
+        throw new Error(transactionResponse.msg || 'Failed to create transaction: No transaction ID returned');
+      }
+
+      console.log('Transaction created successfully:', transactionResponse);
+
+      // Success - close modal and reset form
+      setModalVisible(false);
+      setForm({ person_name: "", event_name: "", amount: "", reason: "", due_date: "" });
+
+      // Refresh transactions
+      const transactionsResponse = await fetch(`${BASE_URL}/api/transactions`);
+      if (!transactionsResponse.ok) {
+        throw new Error(`Failed to fetch transactions: ${transactionsResponse.statusText}`);
+      }
+      const transactions = await transactionsResponse.json();
+      setTransactions(transactions);
+
+    } catch (err: unknown) {
+      console.error('Error:', err);
+      let errorMessage = 'Failed to create transaction';
+      
+      if (err instanceof Error) {
+        errorMessage = err.message;
+      } else if (typeof err === 'string') {
+        errorMessage = err;
+      }
+      
+      console.error('Error message:', errorMessage);
+      setError(errorMessage);
+
+      // Clear form if there was an error
+      setModalVisible(false);
+      setForm({ person_name: "", event_name: "", amount: "", reason: "", due_date: "" });
+    }
   };
 
   const handleMarkAsPaid = (id: number) => {
-    setTransactions((txs) =>
-      txs.map((t) => (t.transaction_id === id ? { ...t, status: true } : t))
-    );
+  fetch(`${BASE_URL}/api/transactions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: true }),
+    })
+      .then((res) => {
+        console.log(`PATCH /api/transactions/${id} status:`, res.status);
+        return res.json();
+      })
+      .then((data) => {
+        console.log(`PATCH response for transaction ${id}:`, data);
+        // Refetch transactions from API
+        fetch(`${BASE_URL}/api/transactions`)
+          .then((res) => res.json())
+          .then((data) => setTransactions(data));
+      });
   };
 
   const handlePartialPayment = () => {
@@ -331,18 +490,19 @@ const Dashboard = () => {
       return;
     }
 
-    setTransactions((txs) =>
-      txs.map((t) =>
-        t.transaction_id === selectedTransactionId
-          ? {
-              ...t,
-              paid_amount: t.paid_amount + amount,
-              status: t.paid_amount + amount >= t.amount,
-            }
-          : t
-      )
-    );
-    setPartialPaymentModalVisible(false);
+  fetch(`${BASE_URL}/api/transactions/${selectedTransactionId}/pay`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amount }),
+    })
+      .then((res) => res.json())
+      .then(() => {
+        setPartialPaymentModalVisible(false);
+        // Refetch transactions from API
+  fetch(`${BASE_URL}/api/transactions`)
+          .then((res) => res.json())
+          .then((data) => setTransactions(data));
+      });
   };
 
   const openPartialPaymentModal = (id: number) => {
@@ -518,51 +678,50 @@ const Dashboard = () => {
               <View style={styles.modalContent}>
                 <Text style={styles.modalTitle}>Add New Transaction</Text>
 
+
               {/* Person Input and Dropdown */}
               <View style={styles.dropdownContainer}>
+                <Text style={styles.inputLabel}>Select or Add Person</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Select or Add Person"
+                  placeholder="Type person name"
                   placeholderTextColor="#999"
                   value={form.person_name}
                   onChangeText={(text) => {
-                    setForm({ ...form, person_name: text });
+                    setForm(prev => ({ ...prev, person_name: text }));
                     setPersonDropdownVisible(true);
-                    setError("");
                   }}
-                  accessibilityLabel="Select or add person name"
                   onFocus={() => setPersonDropdownVisible(true)}
                 />
                 {personDropdownVisible && (
                   <View style={styles.dropdown}>
-                    <ScrollView style={{ maxHeight: 120 }}>
-                      {people
-                        .filter((p) =>
-                          p.name
-                            .toLowerCase()
-                            .startsWith(form.person_name.toLowerCase().trim())
-                        )
+                    <ScrollView style={{ maxHeight: 150 }}>
+                      {Array.isArray(people) && people
+                        .filter(p => p.person_name.toLowerCase().includes(form.person_name.toLowerCase()))
                         .map((p) => (
                           <TouchableOpacity
                             key={p.person_id}
                             onPress={() => {
-                              setForm({ ...form, person_name: p.name });
+                              console.log('Setting person:', p.person_name);
+                              setForm(prevForm => ({
+                                ...prevForm,
+                                person_name: p.person_name
+                              }));
                               setPersonDropdownVisible(false);
                               setError("");
                             }}
-                            accessibilityLabel={`Select person ${p.name}`}
+                            accessibilityLabel={`Select person ${p.person_name}`}
                           >
-                            <Text style={styles.dropdownItem}>{p.name}</Text>
+                            <Text style={styles.dropdownItem}>{p.person_name}</Text>
                           </TouchableOpacity>
-                        ))}
-                      {form.person_name.trim() && (
+                        ))
+                      }
+                      {form.person_name && !people.find(p => p.person_name.toLowerCase() === form.person_name.toLowerCase()) && (
                         <TouchableOpacity
                           onPress={handleAddPerson}
-                          accessibilityLabel={`Add new person ${form.person_name}`}
+                          accessibilityLabel="Add new person"
                         >
-                          <Text style={[styles.dropdownItem, styles.addNew]}>
-                            + Add "{form.person_name.trim()}" as new person
-                          </Text>
+                          <Text style={[styles.dropdownItem, styles.addNew]}>+ Add "{form.person_name}" as new person</Text>
                         </TouchableOpacity>
                       )}
                     </ScrollView>
@@ -572,49 +731,46 @@ const Dashboard = () => {
 
               {/* Event Input and Dropdown */}
               <View style={styles.dropdownContainer}>
+                <Text style={styles.inputLabel}>Select or Add Event</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Select or Add Event (optional)"
+                  placeholder="Type event name"
                   placeholderTextColor="#999"
                   value={form.event_name}
                   onChangeText={(text) => {
-                    setForm({ ...form, event_name: text });
+                    setForm(prev => ({ ...prev, event_name: text }));
                     setEventDropdownVisible(true);
-                    setError("");
                   }}
-                  accessibilityLabel="Select or add event name"
                   onFocus={() => setEventDropdownVisible(true)}
                 />
                 {eventDropdownVisible && (
                   <View style={styles.dropdown}>
-                    <ScrollView style={{ maxHeight: 120 }}>
-                      {events
-                        .filter((e) =>
-                          e.name
-                            .toLowerCase()
-                            .startsWith(form.event_name.toLowerCase().trim())
-                        )
+                    <ScrollView style={{ maxHeight: 150 }}>
+                      {Array.isArray(events) && events
+                        .filter(e => e.event_name.toLowerCase().includes(form.event_name.toLowerCase()))
                         .map((e) => (
                           <TouchableOpacity
                             key={e.event_id}
                             onPress={() => {
-                              setForm({ ...form, event_name: e.name });
+                              setForm(prevForm => ({
+                                ...prevForm,
+                                event_name: e.event_name
+                              }));
                               setEventDropdownVisible(false);
                               setError("");
                             }}
-                            accessibilityLabel={`Select event ${e.name}`}
+                            accessibilityLabel={`Select event ${e.event_name}`}
                           >
-                            <Text style={styles.dropdownItem}>{e.name}</Text>
+                            <Text style={styles.dropdownItem}>{e.event_name}</Text>
                           </TouchableOpacity>
-                        ))}
-                      {form.event_name.trim() && (
+                        ))
+                      }
+                      {form.event_name && !events.find(e => e.event_name.toLowerCase() === form.event_name.toLowerCase()) && (
                         <TouchableOpacity
                           onPress={handleAddEvent}
-                          accessibilityLabel={`Add new event ${form.event_name}`}
+                          accessibilityLabel="Add new event"
                         >
-                          <Text style={[styles.dropdownItem, styles.addNew]}>
-                            + Add "{form.event_name.trim()}" as new event
-                          </Text>
+                          <Text style={[styles.dropdownItem, styles.addNew]}>+ Add "{form.event_name}" as new event</Text>
                         </TouchableOpacity>
                       )}
                     </ScrollView>
@@ -764,6 +920,13 @@ const Dashboard = () => {
 };
 
 const styles = StyleSheet.create({
+  inputLabel: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#495057",
+    marginBottom: 4,
+    marginTop: 8,
+  },
   container: {
     flex: 1,
     backgroundColor: "#F7F9FC",

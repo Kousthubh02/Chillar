@@ -8,8 +8,10 @@ import admin
 import os
 
 # Initialize Flask App
+
 app = Flask(__name__)
 app.config.from_object(Config)
+app.secret_key = 'super-secret-key-1234567890'  # Set a unique secret key for session management
 CORS(app)
 
 # Mail Configuration
@@ -29,7 +31,10 @@ mail.init_app(app)
 migrate = Migrate(app, db)
 
 # Register Blueprints
+
+from routes.api_routes import api_bp
 app.register_blueprint(auth_bp, url_prefix='/auth')
+app.register_blueprint(api_bp, url_prefix='/api')
 admin.init_app(app)
 
 @app.route('/')

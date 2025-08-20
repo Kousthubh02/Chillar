@@ -50,13 +50,14 @@ class Transaction(db.Model):
     person_id=db.Column(db.Integer,db.ForeignKey('person.person_id'),nullable=False)
     event_id=db.Column(db.Integer,db.ForeignKey('event.event_id'),nullable=True)
     amount=db.Column(db.Float,nullable=False)
+    paid_amount=db.Column(db.Float,nullable=False,default=0.0)
     reason=db.Column(db.String(500),nullable=False)
     due_date=db.Column(db.DateTime,nullable=False)
     status=db.Column(db.Boolean,nullable=False,default=False)
-    
-    
+    created_date=db.Column(db.DateTime,nullable=False,default=datetime.utcnow)
+
     person = db.relationship('Person', backref=db.backref('transactions', lazy=True))
-     
-     
+    event = db.relationship('Event', backref=db.backref('transactions', lazy=True))
+
     def __repr__(self):
         return f"<Transaction {self.transaction_id} - {self.amount} - {'Paid' if self.status else 'Pending'}>"
