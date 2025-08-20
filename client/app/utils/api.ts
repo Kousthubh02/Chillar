@@ -24,22 +24,29 @@ export const apiRequest = async (
     { requiresAuth = true, ...options }: ApiOptions = {}
 ) => {
     try {
-        const headers: Record<string, string> = {
-            'Content-Type': 'application/json',
-            ...options.headers,
-        };
+        const requestHeaders = new Headers();
+        requestHeaders.append('Content-Type', 'application/json');
+        
+        // Add any custom headers from options
+        if (options.headers) {
+            const customHeaders = options.headers as Record<string, string>;
+            Object.keys(customHeaders).forEach(key => {
+                requestHeaders.append(key, customHeaders[key]);
+            });
+        }
 
+        // Add auth header if needed
         if (requiresAuth) {
             const token = await getToken();
             if (!token) {
                 throw new Error('Authentication required');
             }
-            headers['Authorization'] = `Bearer ${token}`;
+            requestHeaders.append('Authorization', `Bearer ${token}`);
         }
 
         const response = await fetch(`${config.BACKEND_URL}${endpoint}`, {
             ...options,
-            headers,
+            headers: requestHeaders,
         });
 
         // Handle 401 (Unauthorized) - usually means token expired
@@ -50,24 +57,43 @@ export const apiRequest = async (
 
         // Parse response
         let data;
-        const contentType = response.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-            data = await response.json();
-        } else {
-            data = await response.text();
+        try {
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                data = await response.json();
+            } else {
+                data = await response.text();
+            }
+        } catch (parseError) {
+            console.error('Error parsing response:', parseError);
+            throw new Error('Invalid response from server');
         }
 
         // Handle error responses
         if (!response.ok) {
-            throw new Error(data.msg || 'Something went wrong');
+            const errorMessage = typeof data === 'object' && data.msg 
+                ? data.msg 
+                : 'Something went wrong';
+            throw new Error(errorMessage);
         }
 
         return data;
     } catch (error: any) {
-        // Handle network errors
-        if (!error.response) {
+        // Handle different types of errors
+        if (error.message === 'Authentication required') {
+            throw error; // Rethrow authentication errors
+        }
+        
+        if (error.message === 'Session expired. Please log in again.') {
+            throw error; // Rethrow session expiry errors
+        }
+        
+        // Handle network errors (when fetch itself fails)
+        if (error.name === 'TypeError' && error.message.includes('Network')) {
             throw new Error('Network error. Please check your connection.');
         }
+        
+        // Rethrow any other errors
         throw error;
     }
 };
@@ -103,4 +129,23 @@ export const resetMpin = async (email: string, newMpin: string) => {
         requiresAuth: false,
         body: JSON.stringify({ email, new_mPin: newMpin }),
     });
+};
+
+// Additional utility functions
+export const checkServerConnection = async () => {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        
+        const response = await fetch(`${config.BACKEND_URL}/`, {
+            method: 'GET',
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        return response.ok;
+    } catch (error) {
+        console.error('Server connection check failed:', error);
+        return false;
+    }
 };
