@@ -24,7 +24,9 @@ class ProductionConfig(Config):
     if database_url:
         # Handle both postgres:// and postgresql:// schemes
         if database_url.startswith('postgres://'):
-            database_url = database_url.replace('postgres://', 'postgresql://', 1)
+            database_url = database_url.replace('postgres://', 'postgresql+asyncpg://', 1)
+        elif database_url.startswith('postgresql://'):
+            database_url = database_url.replace('postgresql://', 'postgresql+asyncpg://', 1)
         SQLALCHEMY_DATABASE_URI = database_url
     else:
         raise ValueError("DATABASE_URL environment variable is not set")
