@@ -1,29 +1,28 @@
-from flask import Flask
-from config import Config
+from flask import Flask, Blueprint
+from config import config
 from extensions import db, bcrypt, jwt, mail
 from flask_migrate import Migrate
 from flask_cors import CORS
 from routes.auth_routes import auth_bp
+from utils.api_docs import api
 import admin
 import os
 
-# Initialize Flask App
+def create_app(config_name='default'):
+    # Initialize Flask App
+    app = Flask(__name__)
+    app.config.from_object(config[config_name])
+    
+    # Enable CORS with proper configuration for production
+    CORS(app, resources={
+        r"/*": {
+            "origins": os.getenv('ALLOWED_ORIGINS', '*').split(','),
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"]
+        }
+    })
 
-app = Flask(__name__)
-app.config.from_object(Config)
-app.secret_key = 'super-secret-key-1234567890'  # Set a unique secret key for session management
-CORS(app)
-
-# Mail Configuration
-app.config.update(
-    MAIL_SERVER='smtp.gmail.com',
-    MAIL_PORT=587,
-    MAIL_USE_TLS=True,
-    MAIL_USERNAME='kosu.studies@gmail.com',
-    MAIL_PASSWORD='ncyv zrpn sxzr qfsr',
-)
-
-# Initialize Extensions
+    # Initialize Extensions
 db.init_app(app)
 bcrypt.init_app(app)
 jwt.init_app(app)

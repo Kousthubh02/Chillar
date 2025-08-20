@@ -1,6 +1,9 @@
-# Setting up a Virtual Environment and Installing Requirements
+# Chillar Server
 
-## Setting up a Virtual Environment
+## Overview
+Chillar Server is a Flask-based backend API that provides authentication, transaction management, and event tracking functionality.
+
+## Prerequisites
 
 1. Open a terminal and navigate to your project directory:
     ```sh
