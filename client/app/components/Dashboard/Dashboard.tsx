@@ -15,7 +15,7 @@ import {
   BackHandler,
 } from "react-native";
 import { router } from "expo-router";
-// import DateTimePicker from "@react-native-community/datetimepicker";
+import DateTimePicker from "@react-native-community/datetimepicker";
 
 // Enhanced TypeScript interfaces for better type safety
 interface Transaction {

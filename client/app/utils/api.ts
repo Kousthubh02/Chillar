@@ -1,17 +1,67 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import config from '../config';
+
+// Simple storage implementation that works in all environments
+class SimpleStorage {
+    private storage: Map<string, string> = new Map();
+    
+    async setItem(key: string, value: string): Promise<void> {
+        try {
+            // Try localStorage first (web environment)
+            if (typeof window !== 'undefined' && window.localStorage) {
+                localStorage.setItem(key, value);
+                return;
+            }
+            // Fallback to in-memory storage
+            this.storage.set(key, value);
+        } catch (error) {
+            console.warn('Storage setItem failed, using in-memory storage:', error);
+            this.storage.set(key, value);
+        }
+    }
+    
+    async getItem(key: string): Promise<string | null> {
+        try {
+            // Try localStorage first (web environment)
+            if (typeof window !== 'undefined' && window.localStorage) {
+                return localStorage.getItem(key);
+            }
+            // Fallback to in-memory storage
+            return this.storage.get(key) || null;
+        } catch (error) {
+            console.warn('Storage getItem failed, using in-memory storage:', error);
+            return this.storage.get(key) || null;
+        }
+    }
+    
+    async removeItem(key: string): Promise<void> {
+        try {
+            // Try localStorage first (web environment)
+            if (typeof window !== 'undefined' && window.localStorage) {
+                localStorage.removeItem(key);
+                return;
+            }
+            // Fallback to in-memory storage
+            this.storage.delete(key);
+        } catch (error) {
+            console.warn('Storage removeItem failed, using in-memory storage:', error);
+            this.storage.delete(key);
+        }
+    }
+}
+
+const storage = new SimpleStorage();
 
 // Token management
 export const storeToken = async (token: string) => {
-    await AsyncStorage.setItem('token', token);
+    await storage.setItem('token', token);
 };
 
-export const getToken = async () => {
-    return await AsyncStorage.getItem('token');
+export const getToken = async (): Promise<string | null> => {
+    return await storage.getItem('token');
 };
 
 export const removeToken = async () => {
-    await AsyncStorage.removeItem('token');
+    await storage.removeItem('token');
 };
 
 // API request wrapper
