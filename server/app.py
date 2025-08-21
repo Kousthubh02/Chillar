@@ -40,6 +40,45 @@ def create_app(config_name='default'):
     def home():
         return "This is the home page"
 
+    @app.route('/health')
+    def health_check():
+        try:
+            # Test database connection (SQLAlchemy 2.0 style)
+            with db.engine.connect() as connection:
+                connection.execute(db.text('SELECT 1'))
+            return {"status": "healthy", "database": "connected"}, 200
+        except Exception as e:
+            return {"status": "unhealthy", "database": "disconnected", "error": str(e)}, 500
+
+    @app.route('/db-status')
+    def db_status():
+        try:
+            from models import User, Person, Event, Transaction
+            user_count = User.query.count()
+            person_count = Person.query.count()
+            event_count = Event.query.count()
+            transaction_count = Transaction.query.count()
+            return {
+                "status": "ok",
+                "tables": {
+                    "users": user_count,
+                    "people": person_count,
+                    "events": event_count,
+                    "transactions": transaction_count
+                }
+            }, 200
+        except Exception as e:
+            return {"status": "error", "message": str(e)}, 500
+
+    @app.route('/init-db')
+    def init_db():
+        try:
+            # Create all tables if they don't exist
+            db.create_all()
+            return {"status": "success", "message": "Database tables created"}, 200
+        except Exception as e:
+            return {"status": "error", "message": str(e)}, 500
+
     return app
 
 if __name__ == '__main__':
