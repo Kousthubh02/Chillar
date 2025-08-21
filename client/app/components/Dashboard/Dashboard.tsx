@@ -15,7 +15,19 @@ import {
   BackHandler,
 } from "react-native";
 import { router } from "expo-router";
-import DateTimePicker from "@react-native-community/datetimepicker";
+
+// Try to import DateTimePicker, fallback to null if not available
+let DateTimePicker: any = null;
+let datePickerAvailable = false;
+
+try {
+  DateTimePicker = require("@react-native-community/datetimepicker").default;
+  datePickerAvailable = true;
+  console.log("DateTimePicker loaded successfully");
+} catch (error) {
+  console.warn("DateTimePicker not available, using fallback");
+  datePickerAvailable = false;
+}
 
 // Enhanced TypeScript interfaces for better type safety
 interface Transaction {
@@ -131,6 +143,14 @@ const Dashboard = () => {
   const [selectedPersonFilter, setSelectedPersonFilter] = useState<string>('');
   const [selectedEventFilter, setSelectedEventFilter] = useState<string>('');
   const [filterDropdownVisible, setFilterDropdownVisible] = useState<boolean>(false);
+  
+  // Date picker states
+  const [showDatePicker, setShowDatePicker] = useState<boolean>(false);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  
+  // Mark as paid animation states
+  const [markingAsPaid, setMarkingAsPaid] = useState<Set<number>>(new Set());
+  const [recentlyPaid, setRecentlyPaid] = useState<Set<number>>(new Set());
 
   // Memoized resetForm to prevent unnecessary re-renders
   const resetForm = useCallback(() => {
@@ -144,6 +164,8 @@ const Dashboard = () => {
     setError("");
     setPersonDropdownVisible(false);
     setEventDropdownVisible(false);
+    setShowDatePicker(false);
+    setSelectedDate(new Date());
   }, []);
 
   // Reset partial payment form
@@ -218,6 +240,107 @@ const Dashboard = () => {
       return "Due date cannot be in the past";
     }
     return "";
+  };
+
+  // Handle date picker change
+  const onDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false); // Close picker on Android after selection
+    }
+    
+    if (selectedDate && event.type !== 'dismissed') {
+      setSelectedDate(selectedDate);
+      // Format date as DD-MM-YYYY
+      const day = selectedDate.getDate().toString().padStart(2, '0');
+      const month = (selectedDate.getMonth() + 1).toString().padStart(2, '0');
+      const year = selectedDate.getFullYear().toString();
+      const formattedDate = `${day}-${month}-${year}`;
+      
+      setForm(prev => ({ ...prev, due_date: formattedDate }));
+      setError("");
+    } else if (event.type === 'dismissed') {
+      setShowDatePicker(false);
+    }
+  };
+
+  // Show date picker or fallback to quick date selection
+  const showDatepicker = () => {
+    console.log("Attempting to show date picker, available:", datePickerAvailable);
+    
+    try {
+      if (DateTimePicker && datePickerAvailable) {
+        console.log("Opening native date picker");
+        setShowDatePicker(true);
+      } else {
+        console.log("Using fallback date selection");
+        // Fallback: set tomorrow's date
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        onDateChange({ type: 'set' }, tomorrow);
+      }
+    } catch (error) {
+      console.warn("DateTimePicker error:", error);
+      // If there's an error, fall back to tomorrow's date
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      onDateChange({ type: 'set' }, tomorrow);
+    }
+  };
+
+  // Extended quick date options including months
+  const getQuickDateOptions = () => {
+    const today = new Date();
+    const options = [];
+    
+    // Days
+    for (let i = 1; i <= 7; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + i);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear().toString();
+      const formattedDate = `${day}-${month}-${year}`;
+      
+      options.push({
+        label: i === 1 ? 'Tomorrow' : `${i} days`,
+        value: formattedDate,
+        date: date
+      });
+    }
+    
+    // Weeks
+    for (let i = 2; i <= 4; i++) {
+      const date = new Date(today);
+      date.setDate(today.getDate() + (i * 7));
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear().toString();
+      const formattedDate = `${day}-${month}-${year}`;
+      
+      options.push({
+        label: `${i} weeks`,
+        value: formattedDate,
+        date: date
+      });
+    }
+    
+    // Months
+    for (let i = 1; i <= 6; i++) {
+      const date = new Date(today);
+      date.setMonth(today.getMonth() + i);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear().toString();
+      const formattedDate = `${day}-${month}-${year}`;
+      
+      options.push({
+        label: `${i} month${i > 1 ? 's' : ''}`,
+        value: formattedDate,
+        date: date
+      });
+    }
+    
+    return options;
   };
 
   const handleAddPerson = async () => {
@@ -448,26 +571,68 @@ const Dashboard = () => {
     }
   };
 
-  const handleMarkAsPaid = (id: number) => {
-  fetch(`${BASE_URL}/api/transactions/${id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: true }),
-    })
-      .then((res) => {
-        console.log(`PATCH /api/transactions/${id} status:`, res.status);
-        return res.json();
-      })
-      .then((data) => {
-        console.log(`PATCH response for transaction ${id}:`, data);
-        // Refetch transactions from API
-        fetch(`${BASE_URL}/api/transactions`)
-          .then((res) => res.json())
-          .then((data) => setTransactions(data));
+  const handleMarkAsPaid = async (id: number) => {
+    try {
+      // Add to marking state to show loading/tick animation
+      setMarkingAsPaid(prev => new Set(prev).add(id));
+      
+      const response = await fetch(`${BASE_URL}/api/transactions/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: true }),
       });
+      
+      console.log(`PATCH /api/transactions/${id} status:`, response.status);
+      const data = await response.json();
+      console.log(`PATCH response for transaction ${id}:`, data);
+      
+      if (response.ok) {
+        // Add to recently paid to show tick mark
+        setRecentlyPaid(prev => new Set(prev).add(id));
+        
+        // Remove from marking state
+        setMarkingAsPaid(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(id);
+          return newSet;
+        });
+        
+        // Show tick mark for 2 seconds before removing the transaction
+        setTimeout(() => {
+          // Refetch transactions from API to remove the paid transaction
+          fetch(`${BASE_URL}/api/transactions`)
+            .then((res) => res.json())
+            .then((data) => {
+              setTransactions(data);
+              // Clean up the recently paid state
+              setRecentlyPaid(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(id);
+                return newSet;
+              });
+            });
+        }, 2000);
+      } else {
+        // Remove from marking state on error
+        setMarkingAsPaid(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(id);
+          return newSet;
+        });
+        throw new Error('Failed to mark as paid');
+      }
+    } catch (error) {
+      console.error('Error marking transaction as paid:', error);
+      // Remove from marking state on error
+      setMarkingAsPaid(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(id);
+        return newSet;
+      });
+    }
   };
 
-  const handlePartialPayment = () => {
+  const handlePartialPayment = async () => {
     if (!selectedTransactionId) return;
 
     const amount = parseFloat(partialPaymentAmount);
@@ -490,19 +655,68 @@ const Dashboard = () => {
       return;
     }
 
-  fetch(`${BASE_URL}/api/transactions/${selectedTransactionId}/pay`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ amount }),
-    })
-      .then((res) => res.json())
-      .then(() => {
-        setPartialPaymentModalVisible(false);
-        // Refetch transactions from API
-  fetch(`${BASE_URL}/api/transactions`)
-          .then((res) => res.json())
-          .then((data) => setTransactions(data));
+    try {
+      // Add to marking state for visual feedback
+      setMarkingAsPaid(prev => new Set(prev).add(selectedTransactionId));
+
+      const response = await fetch(`${BASE_URL}/api/transactions/${selectedTransactionId}/pay`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount }),
       });
+
+      const data = await response.json();
+      
+      if (response.ok) {
+        setPartialPaymentModalVisible(false);
+        
+        // Remove from marking state
+        setMarkingAsPaid(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(selectedTransactionId);
+          return newSet;
+        });
+        
+        // If this payment completes the transaction, show tick mark
+        const newPaidAmount = transaction.paid_amount + amount;
+        if (newPaidAmount >= transaction.amount) {
+          setRecentlyPaid(prev => new Set(prev).add(selectedTransactionId));
+          setTimeout(() => {
+            // Refetch transactions and clean up
+            fetch(`${BASE_URL}/api/transactions`)
+              .then((res) => res.json())
+              .then((data) => {
+                setTransactions(data);
+                setRecentlyPaid(prev => {
+                  const newSet = new Set(prev);
+                  newSet.delete(selectedTransactionId);
+                  return newSet;
+                });
+              });
+          }, 2000);
+        } else {
+          // Just refetch to update the amount
+          fetch(`${BASE_URL}/api/transactions`)
+            .then((res) => res.json())
+            .then((data) => setTransactions(data));
+        }
+      } else {
+        setPartialPaymentError("Failed to process payment");
+        setMarkingAsPaid(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(selectedTransactionId);
+          return newSet;
+        });
+      }
+    } catch (error) {
+      console.error('Error processing partial payment:', error);
+      setPartialPaymentError("Network error occurred");
+      setMarkingAsPaid(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(selectedTransactionId);
+        return newSet;
+      });
+    }
   };
 
   const openPartialPaymentModal = (id: number) => {
@@ -511,37 +725,81 @@ const Dashboard = () => {
   };
 
   const renderTransaction = ({ item }: { item: Transaction }) => {
-    if (item.status) return null; // Don't render paid transactions
+    if (item.status && !recentlyPaid.has(item.transaction_id)) return null; // Don't render paid transactions unless recently paid
+    
+    const isMarkingAsPaid = markingAsPaid.has(item.transaction_id);
+    const isRecentlyPaid = recentlyPaid.has(item.transaction_id);
     
     return (
-      <View style={styles.transactionCard}>
-        <Text style={styles.transactionText}>Person: {item.person_name}</Text>
-        <Text style={styles.transactionText}>Event: {item.event_name}</Text>
-        <Text style={styles.transactionText}>
+      <View style={[
+        styles.transactionCard,
+        isRecentlyPaid && styles.paidTransactionCard
+      ]}>
+        {/* Tick mark overlay for recently paid transactions */}
+        {isRecentlyPaid && (
+          <View style={styles.tickMarkOverlay}>
+            <View style={styles.tickMarkContainer}>
+              <Text style={styles.tickMark}>✅</Text>
+              <Text style={styles.paidText}>PAID!</Text>
+            </View>
+          </View>
+        )}
+        
+        <Text style={[styles.transactionText, isRecentlyPaid && styles.paidTransactionText]}>
+          Person: {item.person_name}
+        </Text>
+        <Text style={[styles.transactionText, isRecentlyPaid && styles.paidTransactionText]}>
+          Event: {item.event_name}
+        </Text>
+        <Text style={[styles.transactionText, isRecentlyPaid && styles.paidTransactionText]}>
           Amount: ${item.amount.toFixed(2)}
         </Text>
-        <Text style={styles.transactionText}>
+        <Text style={[styles.transactionText, isRecentlyPaid && styles.paidTransactionText]}>
           Pending: ${(item.amount - item.paid_amount).toFixed(2)}
         </Text>
-        <Text style={styles.transactionText}>Reason: {item.reason}</Text>
-        <Text style={styles.transactionText}>Due: {item.due_date}</Text>
-        <Text style={styles.transactionText}>Status: Pending</Text>
-        <View style={styles.transactionButtons}>
-          <TouchableOpacity
-            style={styles.markPaidButton}
-            onPress={() => handleMarkAsPaid(item.transaction_id)}
-            accessibilityLabel={`Mark transaction for ${item.person_name} as paid`}
-          >
-            <Text style={styles.buttonText}>Mark as Paid</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.partialPaymentButton}
-            onPress={() => openPartialPaymentModal(item.transaction_id)}
-            accessibilityLabel={`Mark partial payment for ${item.person_name}`}
-          >
-            <Text style={styles.buttonText}>Mark Partial Payment</Text>
-          </TouchableOpacity>
-        </View>
+        <Text style={[styles.transactionText, isRecentlyPaid && styles.paidTransactionText]}>
+          Reason: {item.reason}
+        </Text>
+        <Text style={[styles.transactionText, isRecentlyPaid && styles.paidTransactionText]}>
+          Due: {item.due_date}
+        </Text>
+        <Text style={[styles.transactionText, isRecentlyPaid && styles.paidTransactionText]}>
+          Status: {isRecentlyPaid ? 'Paid' : 'Pending'}
+        </Text>
+        
+        {!isRecentlyPaid && (
+          <View style={styles.transactionButtons}>
+            <TouchableOpacity
+              style={[
+                styles.markPaidButton,
+                isMarkingAsPaid && styles.markPaidButtonLoading
+              ]}
+              onPress={() => handleMarkAsPaid(item.transaction_id)}
+              accessibilityLabel={`Mark transaction for ${item.person_name} as paid`}
+              disabled={isMarkingAsPaid}
+            >
+              <Text style={styles.buttonText}>
+                {isMarkingAsPaid ? 'Marking...' : 'Mark as Paid'}
+              </Text>
+              {isMarkingAsPaid && (
+                <Text style={styles.loadingSpinner}>⏳</Text>
+              )}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[
+                styles.partialPaymentButton,
+                isMarkingAsPaid && styles.partialPaymentButtonLoading
+              ]}
+              onPress={() => openPartialPaymentModal(item.transaction_id)}
+              accessibilityLabel={`Mark partial payment for ${item.person_name}`}
+              disabled={isMarkingAsPaid}
+            >
+              <Text style={styles.buttonText}>
+                {isMarkingAsPaid ? 'Processing...' : 'Mark Partial Payment'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   };
@@ -809,18 +1067,76 @@ const Dashboard = () => {
                 accessibilityLabel="Enter transaction reason"
               />
 
-              {/* Due Date Input */}
-              <TextInput
-                style={styles.input}
-                placeholder="Due Date (DD-MM-YYYY)"
-                placeholderTextColor="#999"
-                value={form.due_date}
-                onChangeText={(text) => {
-                  setForm({ ...form, due_date: text });
-                  setError("");
-                }}
-                accessibilityLabel="Enter transaction due date"
-              />
+              {/* Due Date Input with Date Picker */}
+              <View style={styles.dateInputContainer}>
+                <Text style={styles.inputLabel}>Due Date</Text>
+                <View style={styles.dateInputRow}>
+                  <TextInput
+                    style={[styles.input, styles.dateInput]}
+                    placeholder="Due Date (DD-MM-YYYY)"
+                    placeholderTextColor="#999"
+                    value={form.due_date}
+                    onChangeText={(text) => {
+                      setForm({ ...form, due_date: text });
+                      setError("");
+                    }}
+                    accessibilityLabel="Enter transaction due date"
+                  />
+                  <TouchableOpacity
+                    style={[
+                      styles.datePickerButton,
+                      !datePickerAvailable && styles.datePickerButtonDisabled
+                    ]}
+                    onPress={showDatepicker}
+                    accessibilityLabel="Open calendar to select date"
+                  >
+                    <Text style={styles.datePickerButtonText}>
+                      {datePickerAvailable ? '📅' : '📝'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                
+                {/* Show status message */}
+                <Text style={styles.datePickerStatus}>
+                  {datePickerAvailable 
+                    ? "Tap 📅 for calendar or select from options below" 
+                    : "Calendar not available - use quick select or type manually"}
+                </Text>
+                
+                {/* Quick date options - always show for convenience */}
+                <View style={styles.quickDateContainer}>
+                  <Text style={styles.quickDateLabel}>Quick select:</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={styles.quickDateOptions}>
+                      {getQuickDateOptions().map((option, index) => (
+                        <TouchableOpacity
+                          key={index}
+                          style={styles.quickDateButton}
+                          onPress={() => {
+                            setForm(prev => ({ ...prev, due_date: option.value }));
+                            setSelectedDate(option.date);
+                            setError("");
+                          }}
+                        >
+                          <Text style={styles.quickDateButtonText}>{option.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              </View>
+
+              {showDatePicker && DateTimePicker && (
+                <DateTimePicker
+                  testID="dateTimePicker"
+                  value={selectedDate}
+                  mode="date"
+                  is24Hour={true}
+                  display="default"
+                  onChange={onDateChange}
+                  minimumDate={new Date()} // Prevent selecting past dates
+                />
+              )}
 
 
 
@@ -1183,6 +1499,115 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#333",
     backgroundColor: "#FFFFFF",
+  },
+  dateInputContainer: {
+    width: "100%",
+    marginVertical: 6,
+  },
+  dateInputRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  dateInput: {
+    flex: 1,
+  },
+  datePickerButton: {
+    backgroundColor: "#007BFF",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 44,
+    height: 40,
+  },
+  datePickerButtonText: {
+    fontSize: 18,
+    color: "#FFFFFF",
+  },
+  quickDateContainer: {
+    marginTop: 8,
+  },
+  quickDateLabel: {
+    fontSize: 12,
+    color: "#6C757D",
+    marginBottom: 4,
+  },
+  quickDateOptions: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  quickDateButton: {
+    backgroundColor: "#F8F9FA",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: "#CED4DA",
+  },
+  quickDateButtonText: {
+    fontSize: 12,
+    color: "#495057",
+    fontWeight: "500",
+  },
+  datePickerButtonDisabled: {
+    backgroundColor: "#6C757D",
+  },
+  datePickerStatus: {
+    fontSize: 11,
+    color: "#6C757D",
+    marginTop: 4,
+    fontStyle: "italic",
+  },
+  // Tick mark animation styles
+  paidTransactionCard: {
+    backgroundColor: "#D4EDDA",
+    borderColor: "#28A745",
+    borderWidth: 2,
+  },
+  tickMarkOverlay: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    backgroundColor: "rgba(40, 167, 69, 0.1)",
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 10,
+    zIndex: 1,
+  },
+  tickMarkContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  tickMark: {
+    fontSize: 48,
+    marginBottom: 8,
+  },
+  paidText: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#28A745",
+    textAlign: "center",
+  },
+  paidTransactionText: {
+    color: "#155724",
+    textDecorationLine: "line-through",
+    opacity: 0.7,
+  },
+  markPaidButtonLoading: {
+    backgroundColor: "#6C757D",
+    opacity: 0.7,
+  },
+  loadingSpinner: {
+    marginLeft: 8,
+    fontSize: 16,
+  },
+  partialPaymentButtonLoading: {
+    backgroundColor: "#DC8500",
+    opacity: 0.7,
   },
 });
 
