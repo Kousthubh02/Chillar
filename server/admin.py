@@ -20,8 +20,13 @@ class SimpleAdminIndexView(AdminIndexView):
     
     @expose('/')
     def index(self):
-        # Check if user is logged in
-        if not session.get('admin_logged_in', False):
+        # More robust session check
+        try:
+            if not session.get('admin_logged_in', False):
+                return redirect('/admin/login/')
+        except Exception as e:
+            # If session check fails, redirect to login but don't crash
+            print(f"Session check error: {e}")
             return redirect('/admin/login/')
         
         # Get the default Flask-Admin index page
@@ -47,23 +52,39 @@ class SimpleAdminIndexView(AdminIndexView):
                 document.body.appendChild(logoutBtn);
             }
             
-            // Auto-logout when browser tab/window is closed
-            window.addEventListener('beforeunload', function(e) {
-                // Send logout request when page is about to unload
-                navigator.sendBeacon('/admin/logout/');
-            });
+            // Auto-logout when browser tab/window is closed (not on navigation)
+            var isNavigating = false;
             
-            // Also handle page visibility change (when user switches tabs)
-            document.addEventListener('visibilitychange', function() {
-                if (document.hidden) {
-                    // Optional: You can add a timer here to logout after being hidden for X minutes
+            // Track navigation events
+            document.addEventListener('click', function(e) {
+                var target = e.target;
+                if (target.tagName === 'A' || target.closest('a')) {
+                    isNavigating = true;
+                    // Reset navigation flag after a short delay
                     setTimeout(function() {
-                        if (document.hidden) {
-                            navigator.sendBeacon('/admin/logout/');
-                        }
-                    }, 300000); // 5 minutes of inactivity
+                        isNavigating = false;
+                    }, 1000);
                 }
             });
+            
+            // Only logout on actual browser close, not navigation
+            window.addEventListener('beforeunload', function(e) {
+                // Only send logout if it's not a navigation within the admin panel
+                if (!isNavigating) {
+                    navigator.sendBeacon('/admin/logout/');
+                }
+            });
+            
+            // Remove the visibility change logout - too aggressive
+            // document.addEventListener('visibilitychange', function() {
+            //     if (document.hidden) {
+            //         setTimeout(function() {
+            //             if (document.hidden) {
+            //                 navigator.sendBeacon('/admin/logout/');
+            //             }
+            //         }, 300000); // 5 minutes of inactivity
+            //     }
+            // });
         });
         </script>
         </body>
@@ -180,13 +201,23 @@ class SimpleAdminIndexView(AdminIndexView):
 # Simple Model View without Flask-Admin authentication
 class SimpleModelView(ModelView):
     def is_accessible(self):
-        return True  # We'll handle auth at the route level
+        # More robust session check - only redirect if truly not logged in
+        return session.get('admin_logged_in', False)
+    
+    def inaccessible_callback(self, name, **kwargs):
+        # Custom callback when access is denied
+        return redirect('/admin/login/')
     
     def _handle_view(self, name, **kwargs):
-        # Check authentication before processing any view
-        if not session.get('admin_logged_in', False):
-            return redirect('/admin/login/')
-        return super(SimpleModelView, self)._handle_view(name, **kwargs)
+        # Additional safety check with better error handling
+        try:
+            if not session.get('admin_logged_in', False):
+                return redirect('/admin/login/')
+            return super(SimpleModelView, self)._handle_view(name, **kwargs)
+        except Exception as e:
+            # If there's any error, don't logout - just log and continue
+            print(f"Warning: Admin view error (not logging out): {e}")
+            return super(SimpleModelView, self)._handle_view(name, **kwargs)
 
 # Initialize Flask-Admin with simple index view
 admin = Admin(name="Chillar Admin Panel", template_mode="bootstrap4", index_view=SimpleAdminIndexView(name='Home', endpoint='admin'))
