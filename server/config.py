@@ -17,23 +17,32 @@ class Config:
 
 class DevelopmentConfig(Config):
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///database.db'
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL') or 'sqlite:///chillar_dev.db'
 
 class ProductionConfig(Config):
     DEBUG = False
-    database_url = os.getenv('DATABASE_URL')
-    if database_url:
+    
+    @property
+    def SQLALCHEMY_DATABASE_URI(self):
+        database_url = os.getenv('DATABASE_URL')
+        if not database_url:
+            raise ValueError("DATABASE_URL environment variable is required for production")
+        
         # Handle both postgres:// and postgresql:// schemes and use psycopg dialect
         if database_url.startswith('postgres://'):
             database_url = database_url.replace('postgres://', 'postgresql+psycopg://', 1)
         elif database_url.startswith('postgresql://'):
             database_url = database_url.replace('postgresql://', 'postgresql+psycopg://', 1)
-        SQLALCHEMY_DATABASE_URI = database_url
-    else:
-        raise ValueError("DATABASE_URL environment variable is not set")
+        
+        return database_url
+
+class TestingConfig(Config):
+    TESTING = True
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///test_chillar.db'
 
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
+    'testing': TestingConfig,
     'default': DevelopmentConfig
 }
