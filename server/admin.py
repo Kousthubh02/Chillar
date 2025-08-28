@@ -7,22 +7,13 @@ import os
 import json
 
 def load_admin_credentials():
-    """Load admin credentials from environment variables"""
-    # Try new multi-admin format first
-    admin_credentials_json = os.getenv('ADMIN_CREDENTIALS')
-    if admin_credentials_json:
-        try:
-            return json.loads(admin_credentials_json)
-        except json.JSONDecodeError:
-            pass
+    """Load admin credentials - hardcoded for now"""
+    from werkzeug.security import generate_password_hash
     
-    # Fallback to legacy single admin format
-    admin_username = os.getenv('ADMIN_USERNAME')
-    admin_password_hash = os.getenv('ADMIN_PASSWORD_HASH')
-    if admin_username and admin_password_hash:
-        return {admin_username: admin_password_hash}
-    
-    return {}
+    # Hardcoded admin credentials
+    return {
+        "kosu": generate_password_hash("1402")
+    }
 
 # Simple Admin Index View without Flask-Admin authentication
 class SimpleAdminIndexView(AdminIndexView):
