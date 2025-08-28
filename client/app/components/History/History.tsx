@@ -7,8 +7,10 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
+import config from "../../config";
 
 // Enhanced TypeScript interfaces for better type safety
 interface Transaction {
@@ -27,13 +29,78 @@ interface Transaction {
 
 interface HistoryProps {
   transactions: Transaction[];
+  onRefresh?: () => void;
 }
 
-const History: React.FC<HistoryProps> = ({ transactions }) => {
+const History: React.FC<HistoryProps> = ({ transactions, onRefresh }) => {
   const [filter, setFilter] = React.useState<'all' | 'pending' | 'completed' | 'partial'>('all');
   const [filterBy, setFilterBy] = React.useState<'status' | 'person' | 'event'>('status');
   const [selectedPersonFilter, setSelectedPersonFilter] = React.useState<string>('');
   const [selectedEventFilter, setSelectedEventFilter] = React.useState<string>('');
+
+  const handleClearPaidHistory = async () => {
+    const completedTransactions = transactions.filter(t => t.status);
+    
+    if (completedTransactions.length === 0) {
+      Alert.alert(
+        "No Paid Transactions",
+        "There are no paid transactions to clear.",
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
+    Alert.alert(
+      "Clear Paid History",
+      `Are you sure you want to permanently delete ${completedTransactions.length} paid transaction${completedTransactions.length > 1 ? 's' : ''} from the database?\n\nThis action cannot be undone.`,
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const response = await fetch(`${config.BACKEND_URL}/api/transactions/clear-paid`, {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+              });
+
+              if (response.ok) {
+                const result = await response.json();
+                Alert.alert(
+                  "Success",
+                  `Successfully cleared ${result.deleted_count} paid transactions from history.`,
+                  [{ text: "OK" }]
+                );
+                
+                // Refresh the transactions list
+                if (onRefresh) {
+                  onRefresh();
+                }
+              } else {
+                const errorData = await response.json();
+                Alert.alert(
+                  "Error",
+                  `Failed to clear paid history: ${errorData.msg || 'Unknown error'}`,
+                  [{ text: "OK" }]
+                );
+              }
+            } catch (error) {
+              console.error('Error clearing paid history:', error);
+              Alert.alert(
+                "Network Error",
+                "A network error occurred while clearing paid history. Please try again.",
+                [{ text: "OK" }]
+              );
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const filteredTransactions = transactions.filter(transaction => {
     // First apply status filter if filterBy is 'status'
@@ -145,6 +212,13 @@ const History: React.FC<HistoryProps> = ({ transactions }) => {
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
         <Text style={styles.title}>Transaction History</Text>
+        <TouchableOpacity
+          style={styles.clearHistoryButton}
+          onPress={handleClearPaidHistory}
+          accessibilityLabel="Clear all paid transactions from database"
+        >
+          <Text style={styles.clearHistoryButtonText}>Clear Paid</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.summary}>
@@ -316,6 +390,18 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#1A3C6E",
     flex: 1,
+  },
+  clearHistoryButton: {
+    backgroundColor: "#DC3545",
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  clearHistoryButtonText: {
+    color: "#FFFFFF",
+    fontSize: 12,
+    fontWeight: "600",
   },
   summary: {
     flexDirection: "row",

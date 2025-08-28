@@ -632,33 +632,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleClearPaidHistory = async () => {
-    try {
-      const response = await fetch(`${BASE_URL}/api/transactions/clear-paid`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        alert(`Successfully cleared ${result.deleted_count} paid transactions from history.`);
-        
-        // Refresh the transactions list
-        const refreshResponse = await fetch(`${BASE_URL}/api/transactions`);
-        if (refreshResponse.ok) {
-          const updatedTransactions = await refreshResponse.json();
-          setTransactions(updatedTransactions);
-        }
-      } else {
-        const errorData = await response.json();
-        alert(`Failed to clear paid history: ${errorData.msg || 'Unknown error'}`);
-      }
-    } catch (error) {
-      console.error('Error clearing paid history:', error);
-      alert('Network error occurred while clearing paid history');
-    }
-  };
-
   const handlePartialPayment = async () => {
     if (!selectedTransactionId) return;
 
@@ -935,14 +908,6 @@ const Dashboard = () => {
           accessibilityLabel="View transaction history"
         >
           <Text style={styles.buttonText}>View History</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity
-          style={styles.clearHistoryButton}
-          onPress={handleClearPaidHistory}
-          accessibilityLabel="Clear all paid transactions from database"
-        >
-          <Text style={styles.buttonText}>Clear Paid History</Text>
         </TouchableOpacity>
         
         <TouchableOpacity
@@ -1452,25 +1417,12 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: "row",
-    gap: 8,
+    gap: 12,
     marginTop: 12,
     width: "100%",
   },
   historyButton: {
     backgroundColor: "#6C757D",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    flex: 1,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  clearHistoryButton: {
-    backgroundColor: "#DC3545",
     paddingVertical: 12,
     paddingHorizontal: 16,
     borderRadius: 8,

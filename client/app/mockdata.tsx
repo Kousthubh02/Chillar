@@ -9,7 +9,8 @@ export default function MockDataPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const fetchTransactions = () => {
+    setLoading(true);
     fetch(`${config.BACKEND_URL}/api/transactions`)
       .then((res) => {
         if (!res.ok) {
@@ -26,19 +27,23 @@ export default function MockDataPage() {
         setError(`Failed to fetch transactions: ${err.message}`);
         setLoading(false);
       });
+  };
+
+  useEffect(() => {
+    fetchTransactions();
   }, []);
 
   if (loading) return (
     <View>
-      <History transactions={[]} />
+      <History transactions={[]} onRefresh={fetchTransactions} />
       <Text>Loading...</Text>
     </View>
   );
   if (error) return (
     <View>
-      <History transactions={[]} />
+      <History transactions={[]} onRefresh={fetchTransactions} />
       <Text>{error}</Text>
     </View>
   );
-  return <History transactions={transactions} />;
+  return <History transactions={transactions} onRefresh={fetchTransactions} />;
 }
