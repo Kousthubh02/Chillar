@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import config from "../../config";
+import { useAuth } from "../../contexts/AuthContext";
 import {
   View,
   Text,
@@ -13,6 +14,7 @@ import {
   Platform,
   TouchableWithoutFeedback,
   BackHandler,
+  Alert,
 } from "react-native";
 import { router } from "expo-router";
 
@@ -107,6 +109,7 @@ const Dashboard = () => {
   const [partialPaymentError, setPartialPaymentError] = useState<string>("");
   const [people, setPeople] = useState<Person[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
+  const { user, logout } = useAuth();
   // Fetch transactions, people, and events from API
   // Replace with your computer's local IP address
   const BASE_URL = config.BACKEND_URL;
@@ -819,6 +822,31 @@ const Dashboard = () => {
     Number(partialPaymentAmount) <= 0;
 
   // Filter transactions based on selected filters
+  // Handle logout
+  const handleLogout = () => {
+    Alert.alert(
+      "Logout",
+      "Are you sure you want to logout?",
+      [
+        {
+          text: "Cancel",
+          style: "cancel"
+        },
+        {
+          text: "Logout",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await logout();
+            } catch (error) {
+              console.error('Logout error:', error);
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const filteredTransactions = transactions.filter(transaction => {
     if (filterBy === 'person' && selectedPersonFilter) {
       return transaction.person_name.toLowerCase().includes(selectedPersonFilter.toLowerCase());
@@ -831,6 +859,21 @@ const Dashboard = () => {
 
   return (
     <View style={styles.container}>
+      {/* Header with user info and logout */}
+      <View style={styles.dashboardHeader}>
+        <View style={styles.userInfo}>
+          <Text style={styles.welcomeText}>Welcome!</Text>
+          <Text style={styles.emailText}>{user?.email || 'User'}</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          accessibilityLabel="Logout"
+        >
+          <Text style={styles.logoutButtonText}>Logout</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={filteredTransactions}
         renderItem={renderTransaction}
@@ -1248,6 +1291,45 @@ const styles = StyleSheet.create({
     backgroundColor: "#F7F9FC",
     paddingHorizontal: 12,
     paddingVertical: 16,
+  },
+  dashboardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginBottom: 16,
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  userInfo: {
+    flex: 1,
+  },
+  welcomeText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1A3C6E",
+  },
+  emailText: {
+    fontSize: 14,
+    color: "#6C757D",
+    marginTop: 2,
+  },
+  logoutButton: {
+    backgroundColor: "#DC3545",
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 6,
+  },
+  logoutButtonText: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "600",
   },
   header: {
     fontSize: 22,

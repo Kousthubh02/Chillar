@@ -6,7 +6,7 @@ export default function Mpin() {
   const [step, setStep] = useState(1);
   const [mpin, setMpin] = useState(['', '', '', '']);
   const [confirmMpin, setConfirmMpin] = useState(['', '', '', '']);
-  const { email } = useLocalSearchParams<{ email: string }>();
+  const { username, email } = useLocalSearchParams<{ username: string; email: string }>();
 
   const inputRefs = [
     useRef<TextInput>(null),
@@ -55,13 +55,17 @@ export default function Mpin() {
     }
 
     if (mpin.join('') === confirmMpin.join('')) {
+      if (!username || !username.trim()) {
+        Alert.alert('Error', 'Invalid username. Please go back and enter a valid username.');
+        return;
+      }
       if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
         Alert.alert('Error', 'Invalid email. Please go back and enter a valid email.');
         return;
       }
 
       try {
-        const requestBody = { email, mPin: mpin.join('') };
+        const requestBody = { username, email, mPin: mpin.join('') };
         console.log('Sending to backend:',
           {body: requestBody });
 
@@ -93,11 +97,23 @@ export default function Mpin() {
         }
 
         const responseData = responseText ? JSON.parse(responseText) : {};
-        Alert.alert('Success', responseData.message || 'MPIN set and saved successfully');
-        setMpin(['', '', '', '']);
-        setConfirmMpin(['', '', '', '']);
-        setStep(1);
-        router.back();
+        Alert.alert(
+          'Registration Successful!', 
+          'Your account has been created successfully. You can now login with your email and MPIN.',
+          [
+            {
+              text: 'Go to Login',
+              onPress: () => {
+                // Clear the form and redirect to login
+                setMpin(['', '', '', '']);
+                setConfirmMpin(['', '', '', '']);
+                setStep(1);
+                // Navigate to login page
+                router.replace('/login');
+              }
+            }
+          ]
+        );
       } catch (error: any) {
         Alert.alert('Error', error.message || 'Network request failed. Please check your server or network.');
         console.error('Network Error:', {

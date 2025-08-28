@@ -4,9 +4,14 @@ import { router, useNavigation } from 'expo-router';
 
 export default function Register() {
   const navigation = useNavigation();
+  const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
 
   const handleNext = () => {
+    if (!username.trim()) {
+      Alert.alert('Error', 'Please enter your username');
+      return;
+    }
     if (!email.trim()) {
       Alert.alert('Error', 'Please enter your email');
       return;
@@ -17,11 +22,21 @@ export default function Register() {
       return;
     }
     // Navigate to MPIN screen
-    router.push({pathname:'/components/Register/Mpin',params:{email}});
+    router.push({pathname:'/components/Register/Mpin',params:{username, email}});
   };
 
   return (
     <View style={styles.container}>
+      <View style={styles.inputBox}>
+        <Text style={styles.text}>Enter your username</Text>
+        <TextInput
+          placeholder="johndoe"
+          style={styles.Inputtext}
+          value={username}
+          onChangeText={setUsername}
+          autoCapitalize="none"
+        />
+      </View>
       <View style={styles.inputBox}>
         <Text style={styles.text}>Enter your email</Text>
         <TextInput
