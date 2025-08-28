@@ -45,6 +45,31 @@ def update_transaction_status(transaction_id):
     logging.info(f"Transaction {transaction_id} status updated to {transaction.status}")
     return jsonify({'msg': 'Transaction status updated', 'transaction_id': transaction_id, 'status': transaction.status})
 
+# Clear all paid transactions from database
+@api_bp.route('/transactions/clear-paid', methods=['DELETE'])
+def clear_paid_transactions():
+    try:
+        # Find all transactions with status = True (paid)
+        paid_transactions = Transaction.query.filter(Transaction.status == True).all()
+        deleted_count = len(paid_transactions)
+        
+        # Delete all paid transactions
+        for transaction in paid_transactions:
+            db.session.delete(transaction)
+        
+        db.session.commit()
+        
+        logger.info(f"Successfully deleted {deleted_count} paid transactions")
+        return jsonify({
+            'msg': f'Successfully cleared {deleted_count} paid transactions',
+            'deleted_count': deleted_count
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error clearing paid transactions: {str(e)}")
+        return jsonify({'msg': f'Error clearing paid transactions: {str(e)}'}), 500
+
 # People CRUD
 @api_bp.route('/people', methods=['GET'])
 def get_people():
